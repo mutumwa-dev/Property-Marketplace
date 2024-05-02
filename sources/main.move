@@ -7,15 +7,13 @@ module Marketplace::main {
     use sui::object::{Self, UID, ID};
     use sui::balance::{Self, Balance};
     use sui::tx_context::{Self, TxContext, sender};
-    use std::option::{Self, Option, none, some, is_some, contains, borrow};
-    use std::string::{Self, String};
+    use std::option::{Self, Option, none};
+    use std::string::{String};
 
     // Errors
     const ENotEnough: u64 = 0;
     const ERetailerPending: u64 = 1;
-    const EUndeclaredClaim: u64 = 2;
-    const ENotValidatedByBank: u64 = 3;
-    const ENotOwner: u64 = 4;
+    const ENotOwner: u64 = 2;
 
     // Struct definitions
     struct PropertyListing has key, store {
@@ -104,7 +102,18 @@ module Marketplace::main {
         transfer::transfer(cap, *option::borrow(&self.buyer));
     }
 
+    public fun claim_funds(cap: &PropertyCap, self: &mut PropertyListing, ctx: &mut TxContext) {
+        assert!(cap.to == object::id(self), ENotOwner);
+        assert!(self.dispute, ERetailerPending);
 
+        // Transfer the balance
+        let amount = balance::value(&self.escrow);
+        let refund = coin::take(&mut self.escrow, amount, ctx);
+        transfer::public_transfer(refund, sender(ctx));
+    }
 
-    
+    public fun set_retailer_pending(cap: &PropertyCap, self: &mut PropertyListing) {
+        assert!(cap.to == object::id(self), ENotOwner);
+        self.propertySubmitted = true;
+    }
 }
