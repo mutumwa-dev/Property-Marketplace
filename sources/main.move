@@ -1,4 +1,4 @@
-module property_marketplace::main {
+module Marketplace::main {
 
     // Imports
     use sui::transfer;
