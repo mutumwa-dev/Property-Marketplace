@@ -8,6 +8,7 @@ module Marketplace::main {
     use sui::balance::{Self, Balance};
     use sui::tx_context::{Self, TxContext};
     use std::option::{Option, none, some, is_some, contains, borrow};
+    use std::string::{Self, String};
 
     // Errors
     const ENotEnough: u64 = 0;
@@ -21,7 +22,7 @@ module Marketplace::main {
         id: UID,
         owner: address,
         buyer: Option<address>,
-        description: vector<u8>,
+        description: String,
         price: u64,
         escrow: Balance<SUI>,
         propertySubmitted: bool,
@@ -46,7 +47,7 @@ module Marketplace::main {
     }
 
     // Public - Entry functions
-    public fun new(description: vector<u8>, price: u64, ctx: &mut TxContext) : PropertyCap {
+    public fun new(description: String, price: u64, ctx: &mut TxContext) : PropertyCap {
         
         let listing_id = object::new(ctx);
         let inner_ = object::uid_to_inner(&listing_id);
@@ -70,10 +71,17 @@ module Marketplace::main {
         cap
     }
 
-     public entry fun new_price(cap: &PropertyCap, self: &mut PropertyListing, price: u64) {
+     public  fun new_price(cap: &PropertyCap, self: &mut PropertyListing, price: u64) {
         assert!(cap.to == object::id(self), ENotOwner);
         assert!(self.propertySubmitted, ERetailerPending);
         self.price = price;
+    }
+
+    public fun deposit(self: &mut PropertyListing, coin: Coin<SUI>) {
+        assert!(coin::value(&coin) == self.price, ENotEnough);
+
+        let balance_ = coin::into_balance(coin);
+        balance::join(&mut self.escrow, balance_);
     }
 
 
