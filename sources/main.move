@@ -84,13 +84,24 @@ module Marketplace::main {
         balance::join(&mut self.escrow, balance_);
     }
 
-     public fun validate_with_bank(cap: &PropertyCap, self: &mut PropertyListing) {
+     public fun dispute(cap: &PropertyCap, self: &mut PropertyListing) {
         assert!(cap.to == object::id(self), ENotOwner);
         self.dispute = true;
     }
 
-    public fun get_retail(self: &mut PropertyListing, ctx: &mut TxContext) {
+    public fun fill_buyer(self: &mut PropertyListing, ctx: &mut TxContext) {
         option::fill(&mut self.buyer, sender(ctx));
+    }
+
+    public fun claim(cap: PropertyCap, self: &mut PropertyListing, ctx: &mut TxContext) {
+        assert!(cap.to == object::id(self), ENotOwner);
+
+        // Transfer the balance
+        let amount = balance::value(&self.escrow);
+        let refund = coin::take(&mut self.escrow, amount, ctx);
+        transfer::public_transfer(refund, sender(ctx));
+        // Transfer the ownership
+        transfer::transfer(cap, *option::borrow(&self.buyer));
     }
 
 
