@@ -6,8 +6,8 @@ module Marketplace::main {
     use sui::coin::{Self, Coin};
     use sui::object::{Self, UID, ID};
     use sui::balance::{Self, Balance};
-    use sui::tx_context::{Self, TxContext};
-    use std::option::{Option, none, some, is_some, contains, borrow};
+    use sui::tx_context::{Self, TxContext, sender};
+    use std::option::{Self, Option, none, some, is_some, contains, borrow};
     use std::string::{Self, String};
 
     // Errors
@@ -71,7 +71,7 @@ module Marketplace::main {
         cap
     }
 
-     public  fun new_price(cap: &PropertyCap, self: &mut PropertyListing, price: u64) {
+    public  fun new_price(cap: &PropertyCap, self: &mut PropertyListing, price: u64) {
         assert!(cap.to == object::id(self), ENotOwner);
         assert!(self.propertySubmitted, ERetailerPending);
         self.price = price;
@@ -82,6 +82,15 @@ module Marketplace::main {
 
         let balance_ = coin::into_balance(coin);
         balance::join(&mut self.escrow, balance_);
+    }
+
+     public fun validate_with_bank(cap: &PropertyCap, self: &mut PropertyListing) {
+        assert!(cap.to == object::id(self), ENotOwner);
+        self.dispute = true;
+    }
+
+    public fun get_retail(self: &mut PropertyListing, ctx: &mut TxContext) {
+        option::fill(&mut self.buyer, sender(ctx));
     }
 
 
