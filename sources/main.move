@@ -69,7 +69,7 @@ module Marketplace::main {
         cap
     }
 
-    public  fun new_price(cap: &PropertyCap, self: &mut PropertyListing, price: u64) {
+    public fun new_price(cap: &PropertyCap, self: &mut PropertyListing, price: u64) {
         assert!(cap.to == object::id(self), ENotOwner);
         assert!(self.propertySubmitted, ERetailerPending);
         self.price = price;
