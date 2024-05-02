@@ -4,7 +4,7 @@ module Marketplace::main {
     use sui::transfer;
     use sui::sui::SUI;
     use sui::coin::{Self, Coin};
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::balance::{Self, Balance};
     use sui::tx_context::{Self, TxContext};
     use std::option::{Option, none, some, is_some, contains, borrow};
@@ -31,19 +31,26 @@ module Marketplace::main {
         buyerRating: Option<u8>,  // New field to store buyer rating
     }
 
-    // Accessors
-    public entry fun get_listing_description(listing: &PropertyListing): vector<u8> {
-        listing.description
+    struct PropertyCap has key {
+        id: UID,
+        to: ID
     }
 
-    public entry fun get_listing_price(listing: &PropertyListing): u64 {
-        listing.price
+     // === Public-Mutative Functions ===
+
+    public fun get_price(_: &PropertyCap, self: &PropertyListing): u64 {
+        self.price
+    }
+
+    public fun get_dispute(self: &PropertyListing): bool {
+        self.dispute
     }
 
     // Public - Entry functions
-    public entry fun create_listing(description: vector<u8>, price: u64, ctx: &mut TxContext) {
+    public fun create_listing(description: vector<u8>, price: u64, ctx: &mut TxContext) : PropertyCap {
         
         let listing_id = object::new(ctx);
+        let inner_ = object::uid_to_inner(&listing_id);
         transfer::share_object(PropertyListing {
             id: listing_id,
             owner: tx_context::sender(ctx),
@@ -56,6 +63,12 @@ module Marketplace::main {
             sellerRating: none(), // Initialize to None
             buyerRating: none(),  // Initialize to None
         });
+
+        let cap = PropertyCap{
+            id: object::new(ctx),
+            to: inner_
+        };
+        cap
     }
 
     public entry fun place_bid(listing: &mut PropertyListing, ctx: &mut TxContext) {
