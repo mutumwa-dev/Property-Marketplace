@@ -1,5 +1,4 @@
 module property_marketplace::main {
-
     // Imports
     use sui::transfer;
     use sui::sui::SUI;
@@ -16,6 +15,7 @@ module property_marketplace::main {
     const EAlreadyResolved: u64 = 4;
     const ENotOwner: u64 = 5;
     const EInvalidWithdrawal: u64 = 6;
+    const EInsufficientFunds: u64 = 7; // New error code for insufficient funds
 
     // Struct definitions
     struct PropertyListing has key, store {
@@ -27,8 +27,9 @@ module property_marketplace::main {
         escrow: Balance<SUI>,
         propertySubmitted: bool,
         dispute: bool,
-        sellerRating: Option<u8>, // New field to store seller rating
-        buyerRating: Option<u8>,  // New field to store buyer rating
+        sellerRating: Option<u8>, // Field to store seller rating
+        buyerRating: Option<u8>,  // Field to store buyer rating
+        expirationTime: u64,      // New field to store listing expiration time
     }
 
     // Accessors
@@ -41,9 +42,9 @@ module property_marketplace::main {
     }
 
     // Public - Entry functions
-    public entry fun create_listing(description: vector<u8>, price: u64, ctx: &mut TxContext) {
-        
+    public entry fun create_listing(description: vector<u8>, price: u64, expiration_days: u64, ctx: &mut TxContext) {
         let listing_id = object::new(ctx);
+        let expiration_time = tx_context::epoch(ctx) + (expiration_days * 86400); // Convert days to seconds
         transfer::share_object(PropertyListing {
             id: listing_id,
             owner: tx_context::sender(ctx),
@@ -55,11 +56,20 @@ module property_marketplace::main {
             dispute: false,
             sellerRating: none(), // Initialize to None
             buyerRating: none(),  // Initialize to None
+            expirationTime: expiration_time,
         });
     }
 
     public entry fun place_bid(listing: &mut PropertyListing, ctx: &mut TxContext) {
         assert!(!is_some(&listing.buyer), EInvalidBid);
+
+        // Check if the listing has expired
+        assert!(tx_context::epoch(ctx) < listing.expirationTime, EInvalidProperty);
+
+        // Check if the sender has sufficient funds
+        let bid_amount = coin::balance_mut<SUI>(&mut listing.escrow);
+        assert!(coin::value(&bid_amount) >= listing.price, EInsufficientFunds);
+
         listing.buyer = some(tx_context::sender(ctx));
     }
 
@@ -98,10 +108,13 @@ module property_marketplace::main {
         assert!(listing.owner == tx_context::sender(ctx), ENotOwner);
         assert!(listing.propertySubmitted && !listing.dispute, EInvalidProperty);
         assert!(is_some(&listing.buyer), EInvalidBid);
-        let buyer = *borrow(&listing.buyer);
+
+        // Check if the buyer has deposited the correct amount
         let escrow_amount = balance::value(&listing.escrow);
+        assert!(escrow_amount >= listing.price, EInsufficientFunds);
+
+        let buyer = *borrow(&listing.buyer);
         let escrow_coin = coin::take(&mut listing.escrow, escrow_amount, ctx);
-        // Transfer funds to the buyer
         transfer::public_transfer(escrow_coin, buyer);
 
         // Mark the listing as sold
@@ -157,43 +170,62 @@ module property_marketplace::main {
 
         // Reset listing state
         listing.buyer = none();
-        listing.propertySubmitted = false;
         listing.dispute = false;
     }
-       // Function to extend the dispute period of a property listing
+
+    // Function to extend the dispute period of a property listing
     public entry fun extend_dispute_period(listing: &mut PropertyListing, extension_days: u64, ctx: &mut TxContext) {
         assert!(listing.owner == tx_context::sender(ctx), ENotOwner);
         assert!(listing.dispute, EDispute);
-        // Additional logic to extend the dispute period
-        // For example, you could update a timestamp indicating the new dispute end time
+
+        // Calculate the new expiration time for the dispute period
+        let new_expiration_time = listing.expirationTime + (extension_days * 86400); // Convert days to seconds
+        listing.expirationTime = new_expiration_time;
     }
-     // Function to mark a property listing as sold
+
+    // Function to mark a property listing as sold
     public entry fun mark_listing_as_sold(listing: &mut PropertyListing, ctx: &mut TxContext) {
         assert!(listing.owner == tx_context::sender(ctx), ENotOwner);
         assert!(listing.propertySubmitted && !listing.dispute, EInvalidProperty);
         assert!(is_some(&listing.buyer), EInvalidBid);
+
         // Additional logic to mark the listing as sold
         listing.sellerRating = some(5); // Example: Seller gets a rating of 5 (out of 5)
     }
+
     // Function to transfer ownership of a property listing
     public entry fun transfer_listing_ownership(listing: &mut PropertyListing, new_owner: address, ctx: &mut TxContext) {
         assert!(listing.owner == tx_context::sender(ctx), ENotOwner);
-        // Additional logic to transfer ownership of the listing to the new owner
+
+        // Transfer ownership of the listing to the new owner
+        listing.owner = new_owner;
     }
-     // Function to retrieve the current owner of a property listing
+
+    // Function to retrieve the current owner of a property listing
     public entry fun get_listing_owner(listing: &PropertyListing): address {
         listing.owner
     }
-     // Function to retrieve the current buyer of a property listing
+
+    // Function to retrieve the current buyer of a property listing
     public entry fun get_listing_buyer(listing: &PropertyListing): Option<address> {
         listing.buyer
     }
+
     // Function to update property details
     public entry fun update_property_details(listing: &mut PropertyListing, new_details: vector<u8>, ctx: &mut TxContext) {
-    // Only the owner can update property details
-    assert!(listing.owner == tx_context::sender(ctx), ENotOwner);
-    
-    // Additional logic to update property details
-    listing.description = new_details;
-    }  
+        // Only the owner can update property details
+        assert!(listing.owner == tx_context::sender(ctx), ENotOwner);
+
+        // Update property details
+        listing.description = new_details;
+    }
+
+    // Function to allow buyers and sellers to rate each other after a successful transaction
+    public entry fun rate_transaction(listing: &mut PropertyListing, seller_rating: Option<u8>, buyer_rating: Option<u8>, ctx: &mut TxContext) {
+        assert!(listing.owner == tx_context::sender(ctx) || contains(&listing.buyer, &tx_context::sender(ctx)), ENotOwner);
+        assert!(listing.propertySubmitted && !listing.dispute, EInvalidProperty);
+
+        listing.sellerRating = seller_rating;
+        listing.buyerRating = buyer_rating;
+    }
 }
